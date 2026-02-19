@@ -58,7 +58,7 @@ export class OrdersService {
   // Récupérer toutes les commandes ( avec pagination optionnelle)
   async findAll(limit = 20, skip = 0): Promise<Order[]> {
     return this.orderModel
-      .find()
+      .find({ status: { $ne: 'DELETED' } }) // Exclure les commandes marquées comme DELETED
       .sort({ createdAt: -1 })
       .limit(limit)
       .skip(skip)
@@ -80,7 +80,7 @@ export class OrdersService {
   // Récupérer les commandes d'un client spécifique
   async findByCustomer(customerId: string): Promise<Order[]> {
     return this.orderModel
-      .find({ customerId }) // Filtrer par customerId
+      .find({ customerId, status: { $ne: 'DELETED' } }) // Filtrer par customerId et exclure les commandes supprimées
       .sort({ createdAt: -1 })
       .exec();
   }

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -86,6 +87,22 @@ export class OrdersController {
   ): Promise<unknown> {
     return firstValueFrom(
       this.orderClient.send('orders.updateStatus', { orderNumber, ...body }),
+    );
+  }
+
+  // DELETE /orders/:orderNumber
+  // Suppression logique — passe le statut à DELETED via updateStatus existant
+  @Delete(':orderNumber')
+  async deleteOrder(
+    @Param('orderNumber') orderNumber: string,
+    @Body() body: { deletedBy: string }, // Qui supprime — pour l'historique
+  ): Promise<any> {
+    return firstValueFrom(
+      this.orderClient.send('orders.updateStatus', {
+        orderNumber,
+        status: 'DELETED',
+        updatedBy: body.deletedBy,
+      }),
     );
   }
 }

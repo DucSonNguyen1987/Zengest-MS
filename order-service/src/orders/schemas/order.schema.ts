@@ -60,6 +60,7 @@ export class Order {
       'SHIPPED',
       'DELIVERED',
       'CANCELLED',
+      'DELETED'
     ],
     default: 'PENDING',
   })
