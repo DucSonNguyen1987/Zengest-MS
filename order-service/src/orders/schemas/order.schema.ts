@@ -13,6 +13,10 @@ export class Order {
   @Prop()
   customerId: string;
 
+  /** ressourceId : Champ générique prévu pour pointer vers une entité externe
+   * selon le contexte métier (ex: table, un espace, une adresse de livraison, etc.)
+   * ou tout autre objet lié à la commande.
+   */
   @Prop()
   ressourceid: string;
 
@@ -60,7 +64,7 @@ export class Order {
       'SHIPPED',
       'DELIVERED',
       'CANCELLED',
-      'DELETED'
+      'DELETED',
     ],
     default: 'PENDING',
   })

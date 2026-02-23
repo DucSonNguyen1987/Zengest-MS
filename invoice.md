@@ -1,16 +1,7 @@
-***Collection Invoices => Micro service de facturation***
-
-
-** Sturcutre JSON de la collection invoices **
-
-
-
-````
-JSON
-
+````JSON
 {
-  _id: ObjectId,                // Unique => id générée par MONGODB
-  invoiceNumber : String ,      // Unique 
+  "_id": "ObjectId",                // Unique => id générée par MONGODB
+  "invoiceNumber" : "String" ,      // Unique 
   "invoiceDate": "Date",        // Date de la création d'Invoice
   "dueDate": "Date",            // Date limite de paiement
 

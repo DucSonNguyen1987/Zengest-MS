@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { OrdersController } from './orders.controller';
+import { NatsService } from './nats.service';
 
 @Module({
   imports: [
@@ -16,5 +17,6 @@ import { OrdersController } from './orders.controller';
     ]),
   ],
   controllers: [OrdersController], // Controleurs qui écoutent les sujets NATS
+  providers: [NatsService], // Services qui publient des messages sur NATS
 })
 export class OrdersModule {}

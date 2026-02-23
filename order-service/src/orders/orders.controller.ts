@@ -35,7 +35,7 @@ export class OrdersController {
   }
 
   @MessagePattern('orders.update')
-  async updateOrder(
+  async update(
     @Payload()
     data: {
       orderNumber: string;
@@ -49,7 +49,7 @@ export class OrdersController {
     // Destructurer pour séparer les métadonnées (orderNumber, updatedBy)
     // du contenu à mettre à jour (items, addItems, pricing, notes)
     const { orderNumber, updatedBy, ...updateData } = data;
-    return this.ordersService.updateOrder(orderNumber, updateData, updatedBy);
+    return this.ordersService.update(orderNumber, updateData, updatedBy);
   }
 
   @MessagePattern('orders.updateStatus')

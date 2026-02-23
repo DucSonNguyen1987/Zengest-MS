@@ -3,8 +3,7 @@
 ## Structure JSON de la collection order ##
 
 
-````
-JSON
+```JSON
 
 
 {
@@ -71,5 +70,5 @@ JSON
 
 
 
-````
+```
 

@@ -86,7 +86,7 @@ export class OrdersService {
   }
 
   // MAJ d'une commade : items, pricing et/ou notes
-  async updateOrder(
+  async update(
     orderNumber: string,
     data: {
       items?: Partial<Order['items']>; // Remplacer la liste d'items complète
