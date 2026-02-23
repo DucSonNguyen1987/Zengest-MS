@@ -7,7 +7,7 @@ export type OrderDocument = HydratedDocument<Order>;
 //@Schema => cette classe est un schéma Mongoose
 @Schema({ timestamps: true }) // => timestamps ajouté automatiquement
 export class Order {
-  @Prop({ required: true, unique: true })
+  @Prop({ required: true })
   orderNumber: string;
 
   @Prop()

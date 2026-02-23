@@ -24,7 +24,7 @@ export class OrdersController {
     return this.ordersService.findAll(data.limit, data.skip);
   }
 
-  @MessagePattern('order.findByOrderNumber')
+  @MessagePattern('orders.findByOrderNumber')
   async findByOrderNumber(@Payload() data: { orderNumber: string }) {
     return this.ordersService.findByOrderNumber(data.orderNumber);
   }
