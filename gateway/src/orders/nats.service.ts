@@ -5,25 +5,20 @@ import { firstValueFrom } from 'rxjs';
 @Injectable()
 export class NatsService {
   constructor(
-    // On injecte le client Nats enregistré dans le module
-    // sous le token 'ORDER_SERVICE'
-    @Inject('ORDER_SERVICE') private readonly client: ClientProxy,
+    @Inject('ORDER_SERVICE') private readonly orderClient: ClientProxy,
+    @Inject('AUTH_SERVICE') private readonly authClient: ClientProxy,
   ) {}
 
-  /** Méthode générique pour envoyer un message NATS
-   * et attendre une réponse typée.
-   *  Le générique <T> permet à TS de svoir quel type de domnnées
-   *   sera retourné par le microservice.
-   *
-   * @param pattern => le sujet NATS à publier
-   * @param data => les données à envoyer au microservice
-   * @returns une Promise typée avec le résultat attendu
+  /**
+   * Envoie un message NATS au bon service selon le préfixe du pattern.
+   * - Pattern commençant par 'auth.' → AUTH_SERVICE
+   * - Tous les autres → ORDER_SERVICE
    */
   async send<T>(pattern: string, data: unknown): Promise<T> {
-    /** this.client.send() retourne un Observable<unknown>
-     * firstValueFrom() convertit cet Observable en Promise<T>,
-     * Et on caste le résultat vers le type T attendu.
-     */
-    return firstValueFrom(this.client.send<T>(pattern, data));
+    const client = pattern.startsWith('auth.')
+      ? this.authClient
+      : this.orderClient;
+
+    return firstValueFrom(client.send<T>(pattern, data));
   }
 }

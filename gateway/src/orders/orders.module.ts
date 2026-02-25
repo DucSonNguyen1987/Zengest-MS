@@ -14,9 +14,20 @@ import { NatsService } from './nats.service';
           servers: ['nats://localhost:4222'], // Adresse du serveur NATS
         },
       },
+      // Client NATS pour l'auth-service
+      // Utilisé par le JwtAuthGuard pour valider les tokens via 'auth.verify'
+      {
+        name: 'AUTH_SERVICE',
+        transport: Transport.NATS,
+        options: {
+          servers: [process.env.NATS_URL || 'nats://localhost:4222'],
+        },
+      },
     ]),
   ],
   controllers: [OrdersController], // Controleurs qui écoutent les sujets NATS
   providers: [NatsService], // Services qui publient des messages sur NATS
+  // exports permet aux autres modules (AuthModule) d'utiliser NatsService et ClientsModule
+  exports: [NatsService, ClientsModule],
 })
 export class OrdersModule {}
