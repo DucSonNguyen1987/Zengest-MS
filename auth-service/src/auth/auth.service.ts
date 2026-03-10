@@ -94,9 +94,10 @@ export class AuthService {
    * 4. Génère de nouveaux tokens et met à jour le refreshTokenHash en BDD
    */
   async login(dto: LoginDto): Promise<AuthResponse> {
+    console.log('🔍 Recherche user :', dto.email);
     // findByEmail() est notre méthode statique qui réinclut passwordHash
     const user = await this.userModel.findByEmail(dto.email);
-
+    console.log('👤 User trouvé :', user ? 'oui' : 'non');
     // Message générique volontairement — ne pas indiquer si c'est l'email ou le mot de passe
     // qui est incorrect (évite l'énumération des comptes)
     if (!user) {
@@ -107,17 +108,18 @@ export class AuthService {
     if (!user.isActive) {
       throw new UnauthorizedException('Ce compte a été désactivé');
     }
-
+    console.log('🔑 Vérification mot de passe...');
     // comparePassword() est notre méthode d'instance (définie dans user.schema.ts)
     // Elle appelle bcrypt.compare() en interne
     const isPasswordValid = await user.comparePassword(dto.password);
+    console.log('🔑 Mot de passe valide :', isPasswordValid);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Identifiants incorrects');
     }
-
+    console.log('🎟️ Génération des tokens...');
     // Générer de nouveaux tokens à chaque login (rotation des tokens)
     const tokens = await this.generateTokens(user);
-
+    console.log('✅ Tokens générés');
     // Mettre à jour le refreshTokenHash en BDD
     user.refreshTokenHash = await bcrypt.hash(tokens.refreshToken, 10);
     await user.save();

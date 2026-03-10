@@ -6,6 +6,14 @@ import cookieParser from 'cookie-parser';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Active CORS pour autoriser les requêtes depuis le frontend Vite
+  app.enableCors({
+    origin: 'http://localhost:5173',
+    credentials: true, // Nécessaire pour envoyer les cookies pour le refreshToken
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization'],
+  })
+
   // cookie-parser permet de lire req.cookies dans les controllers
   // Nécessaire pour récupérer le refresh token depuis le cookie HttpOnly
   app.use(cookieParser());

@@ -23,6 +23,14 @@ import { NatsService } from './nats.service';
           servers: [process.env.NATS_URL || 'nats://localhost:4222'],
         },
       },
+      // Client NATS pour le menu-service
+      {
+        name: 'MENU_SERVICE',
+        transport: Transport.NATS,
+        options: {
+          servers: [process.env.NATS_URL || 'nats://localhost:4222'],
+        },
+      },
     ]),
   ],
   controllers: [OrdersController], // Controleurs qui écoutent les sujets NATS

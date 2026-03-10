@@ -24,9 +24,12 @@ export class AuthController {
 
   // auth.login => connexion d'un user
   @MessagePattern('auth-login')
-  async login(@Payload() dto: LoginDto): Promise<AuthResponse> {
-    return this.authService.login(dto);
-  }
+async login(@Payload() dto: LoginDto) {
+  console.log('📨 auth-login reçu :', dto);
+  const result = await this.authService.login(dto);
+  console.log('✅ auth-login résultat :', result);
+  return result;
+}
 
   /**  auth.refresh => renouvellement de l'access token
    * Refresh token extrait du cookie HttpOnly par la Gateway

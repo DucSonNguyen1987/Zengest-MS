@@ -3,11 +3,17 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { OrdersModule } from './orders/orders.module';
 import { AuthModule } from './auth/auth.module';
+import { MenuModule } from './menu/menu.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), OrdersModule, AuthModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    OrdersModule,
+    AuthModule,
+    MenuModule,
+  ],
   providers: [
     /**
      * APP_GUARD applique le JwtAuthGuard sur TOUTES les routes de la gateway.
