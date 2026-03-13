@@ -14,7 +14,7 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
-  ressourceid?: string;
+  ressourceId?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

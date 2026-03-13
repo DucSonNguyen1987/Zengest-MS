@@ -97,6 +97,26 @@ export class OrdersController {
     });
   }
 
+  /** PATCH /orders/:ordersNumber => MAJ les items d'iune commande
+   * Permet d'ajouter des items à une commande existante (addItems)
+   * ou de remplacer la liste complète (items)
+   * updatedBy automatiquement rempli depuis le token JWT
+   */
+
+  @Patch(':orderNumber')
+  @Roles('Staff_salle', 'Staff_bar', 'Manager', 'Owner', 'Admin')
+  async updateOrder(
+    @Param('orderNumber') orderNumber: string,
+    @Body() body: UpdateOrderDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<Order> {
+    return this.natsService.send<Order>('orders.update', {
+      orderNumber,
+      ...body,
+      updateedBy: user.email,
+    });
+  }
+
   /**
    * PATCH /orders/:orderNumber/status — changer le statut d'une commande
    * Réservé au staff, managers et admins — pas aux clients

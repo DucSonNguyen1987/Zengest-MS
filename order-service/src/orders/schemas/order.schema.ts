@@ -18,7 +18,7 @@ export class Order {
    * ou tout autre objet lié à la commande.
    */
   @Prop()
-  ressourceid: string;
+  ressourceId: string;
 
   // Tableau d'objets imbriqués (sous documents Mongoose)
 
@@ -35,7 +35,7 @@ export class Order {
   })
   items: {
     productId: string;
-    productname: string;
+    productName: string;
     quantity: number;
     unitPrice: number;
     notes?: string;
@@ -58,13 +58,14 @@ export class Order {
   @Prop({
     required: true,
     enum: [
-      'PENDING',
-      'CONFIRMED',
-      'PROCESSING',
-      'SHIPPED',
-      'DELIVERED',
-      'CANCELLED',
-      'DELETED',
+      'PENDING', // En attente
+      'CONFIRM', // Confirmée
+      'PROCESSING', // En traitement
+      'READY',      // Prête
+      'DELIVERED',  // Livrée
+      'PAID',       // Payée
+      'CANCELLED',  // Annulée
+      'DELETED',    // Supprimée
     ],
     default: 'PENDING',
   })

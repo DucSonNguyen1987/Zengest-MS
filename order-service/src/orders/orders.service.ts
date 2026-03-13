@@ -67,12 +67,9 @@ export class OrdersService {
 
   // Récupérer une commande par son numéro
   async findByOrderNumber(orderNumber: string): Promise<Order> {
-    const fullOrderNumber = `ORD-${orderNumber}`; // Reconsituer le numéro complet
-    const order = await this.orderModel
-      .findOne({ orderNumber: fullOrderNumber })
-      .exec();
+    const order = await this.orderModel.findOne({ orderNumber }).exec();
     if (!order) {
-      throw new NotFoundException(`Commande #${fullOrderNumber} introuvable`);
+      throw new NotFoundException(`Commande #${orderNumber} introuvable`);
     }
     return order;
   }
@@ -98,7 +95,6 @@ export class OrdersService {
   ): Promise<Order> {
     // Vérifier que la commande existe avant toute modification
     await this.findByOrderNumber(orderNumber);
-    const fullOrderNumber = `ORD-${orderNumber}`;
 
     // Construire l'objet de mise à jour dynamiquement
     // On n'envoie à MongoDB que les champs réellement fournis
@@ -141,15 +137,11 @@ export class OrdersService {
     if (Object.keys($push).length > 0) updateQuery.$push = $push;
 
     const updatedOrder = await this.orderModel
-      .findOneAndUpdate(
-        { orderNumber: fullOrderNumber },
-        updateQuery,
-        { new: true }, // Retourner le document mis à jour
-      )
+      .findOneAndUpdate({ orderNumber }, updateQuery, { new: true })
       .exec();
 
     if (!updatedOrder) {
-      throw new NotFoundException(`Commande #${fullOrderNumber} introuvable`);
+      throw new NotFoundException(`Commande #${orderNumber} introuvable`);
     }
 
     return updatedOrder;
@@ -161,30 +153,28 @@ export class OrdersService {
     status: string,
     updatedBy: string,
   ): Promise<Order> {
-    const fullOrderNumber = `ORD-${orderNumber}`;
     await this.findByOrderNumber(orderNumber); // Vérifier que la commande existe
 
     const updatedOrder = await this.orderModel
       .findOneAndUpdate(
-        { orderNumber: fullOrderNumber },
+        { orderNumber },
         {
-          $set: { status }, // Mettre à jour le statut
+          $set: { status },
           $push: {
             statusHistory: {
-              // Ajouter une entrée dans l'historique
               status,
               timestamp: new Date(),
               updatedBy,
             },
           },
         },
-        { new: true }, // Retourner le document mis à jour
+        { new: true },
       )
       .exec();
 
     if (!updatedOrder) {
       throw new NotFoundException(
-        `Commande #${fullOrderNumber} introuvable pour mise à jour`,
+        `Commande #${orderNumber} introuvable pour mise à jour`,
       );
     }
     return updatedOrder;

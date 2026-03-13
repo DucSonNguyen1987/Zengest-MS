@@ -8,11 +8,11 @@ async function bootstrap() {
 
   // Active CORS pour autoriser les requêtes depuis le frontend Vite
   app.enableCors({
-    origin: 'http://localhost:5173',
+    origin: ['http://localhost:5173', 'http://localhost:5174'],
     credentials: true, // Nécessaire pour envoyer les cookies pour le refreshToken
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type','Authorization'],
-  })
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 
   // cookie-parser permet de lire req.cookies dans les controllers
   // Nécessaire pour récupérer le refresh token depuis le cookie HttpOnly
