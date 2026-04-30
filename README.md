@@ -1,619 +1,349 @@
-# Orders Microservice — NestJS + NATS + MongoDB
+# Zengest — Système de gestion de restaurant
 
-Architecture microservice pour la gestion de commandes, exposée via une API Gateway REST communiquant avec le service Orders via NATS.
+Architecture microservices NestJS pour la gestion des commandes, du menu et de l'authentification d'un restaurant.
 
 ---
 
 ## Architecture
 
 ```
-Client (HTTP)
-     │
-     ▼
-┌──────────────┐
-│  API Gateway │  ← API REST (port 3000)
-│  (NestJS)    │
-└──────┬───────┘
-       │ NATS
-       ▼
-┌──────────────┐
-│ Orders       │
-│ Microservice │
-│ (NestJS)     │
-└──────┬───────┘
-       │
-       ▼
-  MongoDB (orders-db)
+Client HTTP (navigateur)
+        │
+        ▼
+┌─────────────────────┐
+│     API Gateway     │  ← NestJS HTTP · port 3000
+│                     │    JwtAuthGuard · RolesGuard
+└──────────┬──────────┘
+           │ NATS (message broker)
+   ┌───────┼───────────────┐
+   ▼       ▼               ▼
+┌────────────┐  ┌────────────┐  ┌────────────┐
+│order-service│  │auth-service│  │menu-service│
+│  NestJS    │  │  NestJS    │  │  NestJS    │
+│Microservice│  │Microservice│  │Microservice│
+└─────┬──────┘  └─────┬──────┘  └─────┬──────┘
+      │               │               │
+  orders-db        users-db        menu-db
+  (MongoDB)        (MongoDB)       (MongoDB)
 ```
+
+Chaque service possède sa propre base de données — isolation totale des domaines.
+Aucun service ne lit directement la base d'un autre — tout passe par NATS.
 
 ---
 
-## Stack
+## Stack technique
 
-- **NestJS** — framework Node.js
-- **NATS** — message broker (transport entre services)
-- **MongoDB + Mongoose** — base de données
-- **Docker** — infrastructure locale
+| Couche | Technologie |
+|--------|-------------|
+| Backend | NestJS 11 + TypeScript |
+| Message broker | NATS |
+| Base de données | MongoDB 7 + Mongoose |
+| Frontend | React + TypeScript + MUI + Zustand |
+| Authentification | JWT + bcrypt |
+| Tests | Jest + ts-jest |
+| Infrastructure | Docker + Docker Compose |
 
 ---
 
-## Structure des projets
+## Structure du projet
 
 ```
-project/
-├── api-gateway/
+Backend/
+├── gateway/                  ← API Gateway HTTP (port 3000)
 │   ├── src/
-│   │   ├── orders/
-│   │   │   ├── orders.controller.ts
-│   │   │   └── orders.module.ts
-│   │   ├── app.module.ts
-│   │   └── main.ts
-│   └── package.json
+│   │   ├── orders/           ← Routes commandes
+│   │   ├── auth/             ← Routes authentification
+│   │   ├── menu/             ← Routes menu
+│   │   └── common/           ← Guards, décorateurs
+│   ├── Dockerfile
+│   └── .env
 │
-└── orders-microservice/
-    ├── src/
-    │   ├── orders/
-    │   │   ├── orders.controller.ts
-    │   │   ├── orders.service.ts
-    │   │   ├── orders.module.ts
-    │   │   ├── schemas/
-    │   │   │   └── order.schema.ts
-    │   │   └── dto/
-    │   │       └── create-order.dto.ts
-    │   ├── app.module.ts
-    │   └── main.ts
-    └── package.json
+├── order-service/            ← Microservice commandes
+│   ├── src/
+│   │   └── orders/
+│   │       ├── orders.controller.ts
+│   │       ├── orders.service.ts
+│   │       ├── schemas/
+│   │       └── dto/
+│   ├── Dockerfile
+│   └── .env
+│
+├── auth-service/             ← Microservice authentification
+│   ├── src/
+│   │   ├── auth/
+│   │   └── users/
+│   ├── Dockerfile
+│   └── .env
+│
+├── menu-service/             ← Microservice menu
+│   ├── src/
+│   │   └── menu/
+│   ├── Dockerfile
+│   └── .env
+│
+├── docker-compose.yml
+└── .env                      ← Variables d'environnement Docker
 ```
 
 ---
 
-## Installation
+## Démarrage rapide
+
+### Prérequis
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- Node.js 20+ (pour le développement local)
+
+### Avec Docker Compose (recommandé)
 
 ```bash
-npm install -g @nestjs/cli
+# Cloner le projet
+git clone <repo>
+cd Backend
 
-# Créer les projets
-nest new api-gateway
-nest new orders-microservice
+# Créer le fichier .env racine
+cp .env.example .env
+# Editer .env avec vos secrets JWT
 
-# Dépendances — microservice
-cd orders-microservice
-npm install @nestjs/microservices nats @nestjs/mongoose mongoose class-validator class-transformer
+# Démarrer tous les services
+docker-compose up --build
 
-# Dépendances — gateway
-cd ../api-gateway
-npm install @nestjs/microservices nats class-validator class-transformer
-```
-
----
-
-## Infrastructure (Docker)
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  nats:
-    image: nats:latest
-    ports:
-      - "4222:4222"
-      - "8222:8222"
-    command: "--http_port 8222"
-
-  mongodb:
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
-volumes:
-  mongo_data:
-```
-
-```bash
+# Ou en arrière-plan
 docker-compose up -d
 ```
 
-Monitoring NATS disponible sur `http://localhost:8222`.
+L'API est disponible sur `http://localhost:3000`.
+Le monitoring NATS est disponible sur `http://localhost:8222`.
 
----
-
-## Microservice Orders
-
-### Schéma MongoDB — `order.schema.ts`
-
-```typescript
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
-
-export type OrderDocument = Order & Document;
-
-@Schema({ _id: false })
-export class OrderItem {
-  @Prop({ required: true }) productId: string;
-  @Prop({ required: true }) productName: string;
-  @Prop({ required: true, min: 1 }) quantity: number;
-  @Prop({ required: true, min: 0 }) unitPrice: number;
-  @Prop() notes?: string;
-}
-
-@Schema({ _id: false })
-export class Pricing {
-  @Prop({ required: true }) subtotal: number;
-  @Prop({ default: 0 }) discount: number;
-  @Prop({ required: true }) total: number;
-}
-
-@Schema({ _id: false })
-export class StatusHistory {
-  @Prop({ required: true }) status: string;
-  @Prop({ default: Date.now }) timestamp: Date;
-  @Prop() updatedBy?: string;
-}
-
-export enum OrderStatus {
-  PENDING = 'PENDING',
-  CONFIRMED = 'CONFIRMED',
-  PROCESSING = 'PROCESSING',
-  SHIPPED = 'SHIPPED',
-  DELIVERED = 'DELIVERED',
-  CANCELLED = 'CANCELLED',
-}
-
-@Schema({ timestamps: true, collection: 'orders' })
-export class Order {
-  @Prop({ required: true, unique: true }) orderNumber: string;
-  @Prop() customerId?: string;
-  @Prop() ressourceId?: string;
-  @Prop({ type: [OrderItem], required: true }) items: OrderItem[];
-  @Prop({ type: Pricing, required: true }) pricing: Pricing;
-  @Prop({ type: String, enum: OrderStatus, default: OrderStatus.PENDING }) status: OrderStatus;
-  @Prop() notes?: string;
-  @Prop({ type: Object }) metadata?: Record<string, any>;
-  @Prop({ type: [StatusHistory], default: [] }) statusHistory: StatusHistory[];
-}
-
-export const OrderSchema = SchemaFactory.createForClass(Order);
-
-OrderSchema.index({ orderNumber: 1 }, { unique: true });
-OrderSchema.index({ customerId: 1, createdAt: -1 });
-OrderSchema.index({ status: -1, createdAt: -1 });
-OrderSchema.index({ ressourceId: 1, status: 1 });
-```
-
----
-
-### DTO — `create-order.dto.ts`
-
-```typescript
-import {
-  IsString, IsArray, IsNumber, IsOptional,
-  ValidateNested, IsNotEmpty, Min, ArrayMinSize,
-} from 'class-validator';
-import { Type } from 'class-transformer';
-
-export class CreateOrderItemDto {
-  @IsString() @IsNotEmpty() productId: string;
-  @IsString() @IsNotEmpty() productName: string;
-  @IsNumber() @Min(1) quantity: number;
-  @IsNumber() @Min(0) unitPrice: number;
-  @IsOptional() @IsString() notes?: string;
-}
-
-export class CreatePricingDto {
-  @IsNumber() @Min(0) subtotal: number;
-  @IsOptional() @IsNumber() @Min(0) discount?: number;
-  @IsNumber() @Min(0) total: number;
-}
-
-export class CreateOrderDto {
-  @IsOptional() @IsString() customerId?: string;
-  @IsOptional() @IsString() ressourceId?: string;
-
-  @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => CreateOrderItemDto)
-  items: CreateOrderItemDto[];
-
-  @ValidateNested()
-  @Type(() => CreatePricingDto)
-  pricing: CreatePricingDto;
-
-  @IsOptional() @IsString() notes?: string;
-  @IsOptional() metadata?: Record<string, any>;
-}
-```
-
----
-
-### Service — `orders.service.ts`
-
-```typescript
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Order, OrderDocument, OrderStatus } from './schemas/order.schema';
-import { CreateOrderDto } from './dto/create-order.dto';
-
-@Injectable()
-export class OrdersService {
-  constructor(
-    @InjectModel(Order.name) private readonly orderModel: Model<OrderDocument>,
-  ) {}
-
-  private generateOrderNumber(): string {
-    const year = new Date().getFullYear();
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `ORD-${year}-${random}`;
-  }
-
-  async create(dto: CreateOrderDto): Promise<Order> {
-    const order = new this.orderModel({
-      ...dto,
-      orderNumber: this.generateOrderNumber(),
-      status: OrderStatus.PENDING,
-      statusHistory: [{ status: OrderStatus.PENDING, timestamp: new Date() }],
-    });
-    return order.save();
-  }
-
-  async findAll(): Promise<Order[]> {
-    return this.orderModel.find().sort({ createdAt: -1 }).exec();
-  }
-
-  async findOne(id: string): Promise<Order> {
-    const order = await this.orderModel.findById(id).exec();
-    if (!order) throw new NotFoundException(`Commande #${id} introuvable`);
-    return order;
-  }
-
-  async updateStatus(id: string, status: OrderStatus, updatedBy?: string): Promise<Order> {
-    const order = await this.findOne(id);
-    order.statusHistory.push({ status, timestamp: new Date(), updatedBy });
-    order.status = status;
-    return (order as OrderDocument).save();
-  }
-
-  async findByCustomer(customerId: string): Promise<Order[]> {
-    return this.orderModel.find({ customerId }).sort({ createdAt: -1 }).exec();
-  }
-}
-```
-
----
-
-### Controller — `orders.controller.ts`
-
-```typescript
-import { Controller } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
-import { OrdersService } from './orders.service';
-import { CreateOrderDto } from './dto/create-order.dto';
-import { OrderStatus } from './schemas/order.schema';
-
-@Controller()
-export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
-
-  @MessagePattern('orders.create')
-  create(@Payload() data: CreateOrderDto) {
-    return this.ordersService.create(data);
-  }
-
-  @MessagePattern('orders.findAll')
-  findAll() {
-    return this.ordersService.findAll();
-  }
-
-  @MessagePattern('orders.findOne')
-  findOne(@Payload() data: { id: string }) {
-    return this.ordersService.findOne(data.id);
-  }
-
-  @MessagePattern('orders.updateStatus')
-  updateStatus(@Payload() data: { id: string; status: OrderStatus; updatedBy?: string }) {
-    return this.ordersService.updateStatus(data.id, data.status, data.updatedBy);
-  }
-
-  @MessagePattern('orders.findByCustomer')
-  findByCustomer(@Payload() data: { customerId: string }) {
-    return this.ordersService.findByCustomer(data.customerId);
-  }
-}
-```
-
----
-
-### Module — `orders.module.ts`
-
-```typescript
-import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
-import { OrdersController } from './orders.controller';
-import { OrdersService } from './orders.service';
-import { Order, OrderSchema } from './schemas/order.schema';
-
-@Module({
-  imports: [
-    MongooseModule.forFeature([{ name: Order.name, schema: OrderSchema }]),
-  ],
-  controllers: [OrdersController],
-  providers: [OrdersService],
-})
-export class OrdersModule {}
-```
-
----
-
-### App Module — `app.module.ts`
-
-```typescript
-import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
-import { OrdersModule } from './orders/orders.module';
-
-@Module({
-  imports: [
-    MongooseModule.forRoot(process.env.MONGODB_URI || 'mongodb://localhost:27017/orders-db'),
-    OrdersModule,
-  ],
-})
-export class AppModule {}
-```
-
----
-
-### Entrée — `main.ts`
-
-```typescript
-import { NestFactory } from '@nestjs/core';
-import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-import { ValidationPipe } from '@nestjs/common';
-import { AppModule } from './app.module';
-
-async function bootstrap() {
-  const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule, {
-    transport: Transport.NATS,
-    options: {
-      servers: [process.env.NATS_URL || 'nats://localhost:4222'],
-    },
-  });
-
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-
-  await app.listen();
-  console.log('✅ Orders Microservice connecté à NATS');
-}
-
-bootstrap();
-```
-
----
-
-## API Gateway
-
-### App Module — `app.module.ts`
-
-```typescript
-import { Module } from '@nestjs/common';
-import { ClientsModule, Transport } from '@nestjs/microservices';
-import { OrdersModule } from './orders/orders.module';
-
-@Module({
-  imports: [
-    ClientsModule.register([
-      {
-        name: 'ORDERS_SERVICE',
-        transport: Transport.NATS,
-        options: { servers: [process.env.NATS_URL || 'nats://localhost:4222'] },
-      },
-    ]),
-    OrdersModule,
-  ],
-})
-export class AppModule {}
-```
-
----
-
-### Module Orders — `orders.module.ts`
-
-```typescript
-import { Module } from '@nestjs/common';
-import { ClientsModule, Transport } from '@nestjs/microservices';
-import { OrdersController } from './orders.controller';
-
-@Module({
-  imports: [
-    ClientsModule.register([
-      {
-        name: 'ORDERS_SERVICE',
-        transport: Transport.NATS,
-        options: { servers: [process.env.NATS_URL || 'nats://localhost:4222'] },
-      },
-    ]),
-  ],
-  controllers: [OrdersController],
-})
-export class OrdersModule {}
-```
-
----
-
-### Controller — `orders.controller.ts`
-
-```typescript
-import {
-  Controller, Get, Post, Patch, Param,
-  Body, Inject, HttpException, HttpStatus,
-} from '@nestjs/common';
-import { ClientProxy } from '@nestjs/microservices';
-import { firstValueFrom } from 'rxjs';
-
-@Controller('orders')
-export class OrdersController {
-  constructor(
-    @Inject('ORDERS_SERVICE') private readonly ordersClient: ClientProxy,
-  ) {}
-
-  @Post()
-  async create(@Body() dto: any) {
-    try {
-      return await firstValueFrom(this.ordersClient.send('orders.create', dto));
-    } catch (error) {
-      throw new HttpException(error.message || 'Erreur création', HttpStatus.BAD_REQUEST);
-    }
-  }
-
-  @Get()
-  findAll() {
-    return firstValueFrom(this.ordersClient.send('orders.findAll', {}));
-  }
-
-  @Get('customer/:customerId')
-  findByCustomer(@Param('customerId') customerId: string) {
-    return firstValueFrom(this.ordersClient.send('orders.findByCustomer', { customerId }));
-  }
-
-  @Get(':id')
-  async findOne(@Param('id') id: string) {
-    try {
-      return await firstValueFrom(this.ordersClient.send('orders.findOne', { id }));
-    } catch {
-      throw new HttpException('Commande introuvable', HttpStatus.NOT_FOUND);
-    }
-  }
-
-  @Patch(':id/status')
-  updateStatus(
-    @Param('id') id: string,
-    @Body() body: { status: string; updatedBy?: string },
-  ) {
-    return firstValueFrom(this.ordersClient.send('orders.updateStatus', { id, ...body }));
-  }
-}
-```
-
----
-
-### Entrée — `main.ts`
-
-```typescript
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { AppModule } from './app.module';
-
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api');
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
-  console.log(`✅ API Gateway démarrée sur http://localhost:${port}/api`);
-}
-
-bootstrap();
-```
-
----
-
-## Démarrage
+### En développement local (sans Docker)
 
 ```bash
 # Terminal 1 — Infrastructure
-docker-compose up -d
+docker-compose up nats mongodb
 
-# Terminal 2 — Microservice
-cd orders-microservice && npm run start:dev
+# Terminal 2 — order-service
+cd order-service && npm install && npm run start:dev
 
-# Terminal 3 — Gateway
-cd api-gateway && npm run start:dev
-```
+# Terminal 3 — auth-service
+cd auth-service && npm install && npm run start:dev
 
----
+# Terminal 4 — menu-service
+cd menu-service && npm install && npm run start:dev
 
-## Routes
-
-| Méthode | Route | Description |
-|---|---|---|
-| `POST` | `/api/orders` | Créer une commande |
-| `GET` | `/api/orders` | Lister toutes les commandes |
-| `GET` | `/api/orders/:id` | Récupérer une commande |
-| `PATCH` | `/api/orders/:id/status` | Mettre à jour le statut |
-| `GET` | `/api/orders/customer/:customerId` | Commandes d'un client |
-
----
-
-## Exemples curl
-
-```bash
-# Créer une commande
-curl -X POST http://localhost:3000/api/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customerId": "user-123",
-    "items": [{
-      "productId": "prod-001",
-      "productName": "Laptop",
-      "quantity": 1,
-      "unitPrice": 999.99
-    }],
-    "pricing": { "subtotal": 999.99, "total": 999.99 }
-  }'
-
-# Lister
-curl http://localhost:3000/api/orders
-
-# Détail
-curl http://localhost:3000/api/orders/<id>
-
-# Changer le statut
-curl -X PATCH http://localhost:3000/api/orders/<id>/status \
-  -H "Content-Type: application/json" \
-  -d '{ "status": "CONFIRMED", "updatedBy": "admin" }'
-
-# Par client
-curl http://localhost:3000/api/orders/customer/user-123
+# Terminal 5 — gateway
+cd gateway && npm install && npm run start:dev
 ```
 
 ---
 
 ## Variables d'environnement
 
-```env
-# orders-microservice/.env
-MONGODB_URI=mongodb://localhost:27017/orders-db
-NATS_URL=nats://localhost:4222
+### `.env` racine (Docker Compose)
 
-# api-gateway/.env
+```env
+# Infrastructure
+NATS_URL=nats://nats:4222
+
+# Gateway
+PORT=3000
+
+# JWT
+JWT_SECRET=change_this_secret_in_production_min_32_chars
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_SECRET=change_this_refresh_secret_in_production_min_32_chars
+JWT_REFRESH_EXPIRES_IN=7d
+
+# MongoDB
+MONGODB_URI_ORDERS=mongodb://mongodb:27017/orders-db
+MONGODB_URI_AUTH=mongodb://mongodb:27017/auth-db
+MONGODB_URI_MENU=mongodb://mongodb:27017/menu-db
+```
+
+### `.env` locaux (développement sans Docker)
+
+```env
+# gateway/.env
 NATS_URL=nats://localhost:4222
 PORT=3000
+JWT_SECRET=change_this_secret_in_production_min_32_chars
+
+# order-service/.env
+NATS_URL=nats://localhost:4222
+MONGODB_URI=mongodb://localhost:27017/orders-db
+
+# auth-service/.env
+NATS_URL=nats://localhost:4222
+MONGODB_URI=mongodb://localhost:27017/auth-db
+JWT_SECRET=change_this_secret_in_production_min_32_chars
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_SECRET=change_this_refresh_secret_in_production_min_32_chars
+JWT_REFRESH_EXPIRES_IN=7d
+
+# menu-service/.env
+NATS_URL=nats://localhost:4222
+MONGODB_URI=mongodb://localhost:27017/menu-db
 ```
 
-```bash
-npm install @nestjs/config
-```
+---
 
-```typescript
-// Ajouter dans app.module.ts de chaque projet
-import { ConfigModule } from '@nestjs/config';
+## Routes API
 
-ConfigModule.forRoot({ isGlobal: true })
-```
+### Authentification
+
+| Méthode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| `POST` | `/auth/register` | Public | Inscription |
+| `POST` | `/auth/login` | Public | Connexion |
+| `POST` | `/auth/refresh` | Public | Renouveler le token |
+| `POST` | `/auth/logout` | JWT | Déconnexion |
+
+### Commandes
+
+| Méthode | Route | Rôles | Description |
+|---------|-------|-------|-------------|
+| `POST` | `/orders` | Tous | Créer une commande |
+| `GET` | `/orders` | Staff+ | Lister les commandes |
+| `GET` | `/orders/:orderNumber` | Tous | Détail d'une commande |
+| `GET` | `/orders/customer/:customerId` | Tous | Commandes d'un client |
+| `PATCH` | `/orders/:orderNumber` | Staff+ | Modifier les items |
+| `PATCH` | `/orders/:orderNumber/status` | Staff+ | Changer le statut |
+
+### Menu
+
+| Méthode | Route | Rôles | Description |
+|---------|-------|-------|-------------|
+| `GET` | `/menu` | Public | Lister les plats |
+| `GET` | `/menu/available` | Public | Plats disponibles |
+| `GET` | `/menu/category/:mainCategory` | Public | Par catégorie |
+| `POST` | `/menu` | Manager+ | Créer un plat |
+| `PATCH` | `/menu/:id` | Manager+ | Modifier un plat |
+| `PATCH` | `/menu/:id/available` | Manager+ | Marquer disponible |
+| `PATCH` | `/menu/:id/unavailable` | Manager+ | Marquer indisponible |
+| `DELETE` | `/menu/:id` | Manager+ | Supprimer un plat |
+
+---
+
+## Rôles
+
+| Rôle | Périmètre |
+|------|-----------|
+| `Client` | Ses propres commandes, consultation menu |
+| `Staff_salle` | Commandes en salle |
+| `Staff_bar` | Commandes boissons |
+| `Kitchen` | Consultation et suivi des commandes |
+| `Manager` | Accès complet commandes + menu |
+| `Owner` | Accès complet |
+| `Admin` | Accès système total |
 
 ---
 
 ## Statuts de commande
 
+```
+PENDING → CONFIRM → PROCESSING → READY → DELIVERED
+                                        → PAID
+```
+
+`PAID` et `DELIVERED` sont des statuts **indépendants** — le paiement peut
+intervenir avant ou après la livraison selon le contexte.
+
 | Statut | Description |
-|---|---|
+|--------|-------------|
 | `PENDING` | En attente de confirmation |
-| `CONFIRMED` | Confirmée |
-| `PROCESSING` | En cours de traitement |
-| `SHIPPED` | Expédiée |
-| `DELIVERED` | Livrée |
+| `CONFIRM` | Confirmée par le staff |
+| `PROCESSING` | En préparation en cuisine |
+| `READY` | Prête à être servie |
+| `DELIVERED` | Livrée au client |
+| `PAID` | Payée |
 | `CANCELLED` | Annulée |
+| `DELETED` | Supprimée (soft delete) |
+
+---
+
+## Tests
+
+```bash
+# Depuis order-service/
+npm test                 # Lancer tous les tests
+npm run test:watch       # Mode watch
+npm run test:cov         # Rapport de couverture
+```
+
+Couverture actuelle :
+
+```
+orders.service.ts    | 100% lignes | 100% fonctions
+orders.controller.ts | 100% lignes | 100% fonctions
+Total                | 36 tests    | 0 échec
+```
+
+---
+
+## Commandes Docker utiles
+
+```bash
+# Démarrer
+docker-compose up
+
+# Démarrer en arrière-plan
+docker-compose up -d
+
+# Rebuild et démarrer
+docker-compose up --build
+
+# Rebuild un seul service
+docker-compose up --build gateway
+
+# Arrêter
+docker-compose down
+
+# Arrêter et supprimer les volumes (⚠️ efface MongoDB)
+docker-compose down -v
+
+# Logs d'un service
+docker-compose logs gateway --tail=50
+
+# Statut des containers
+docker-compose ps
+```
+
+---
+
+## Exemple d'utilisation
+
+```bash
+# 1 — S'inscrire
+curl -X POST http://localhost:3000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "firstName": "Duc-Son",
+    "lastName": "Nguyen",
+    "email": "staff@zengest.fr",
+    "password": "Password123!",
+    "role": "Staff_salle"
+  }'
+
+# 2 — Se connecter et récupérer le token
+curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "staff@zengest.fr", "password": "Password123!" }'
+
+# 3 — Créer une commande
+curl -X POST http://localhost:3000/orders \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ressourceId": "table-3",
+    "items": [
+      { "productId": "p1", "productName": "Burger", "quantity": 2, "unitPrice": 12.50 }
+    ],
+    "pricing": { "subtotal": 25.00, "total": 25.00 }
+  }'
+
+# 4 — Changer le statut
+curl -X PATCH http://localhost:3000/orders/ORD-20260401-0001/status \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{ "status": "CONFIRM" }'
+```

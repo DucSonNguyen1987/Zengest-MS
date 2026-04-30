@@ -31,14 +31,16 @@ export class UpdateOrderDto {
   @IsString()
   notes?: string;
 
+  @IsOptional()
   @IsString()
-  updatedBy: string;
+  updatedBy?: string;
 }
 
 export class UpdateStatusDto {
   @IsString()
   status: string;
 
+  @IsOptional()
   @IsString()
-  updatedBy: string;
+  updatedBy?: string;
 }

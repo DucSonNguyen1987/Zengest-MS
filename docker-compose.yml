@@ -1,23 +1,74 @@
-# docker-compose.yml
 version: '3.8'
 
 services:
 
-  # Message broker NATS 
   nats:
-    image: nats:latest         # Image officielle NATS
+    image: nats:latest
     ports:
-      - "4222:4222"            # Port principal pour les connexions des applications
-      - "8222:8222"            # Port HTTP pour le monitoring (interface de stats)
-    command: "--http_port 8222"  # Activer le monitoring HTTP
+      - "4222:4222"
+      - "8222:8222"
+    command: "--http_port 8222"
 
-  # Base de données
   mongodb:
     image: mongo:7
     ports:
       - "27017:27017"
     volumes:
-      - mongo_data:/data/db    # Persistance des données entre redémarrages
+      - mongo_data:/data/db
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NATS_URL=${NATS_URL}
+      - PORT=${PORT}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - nats
+    restart: unless-stopped
+
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    environment:
+      - NATS_URL=${NATS_URL}
+      - MONGODB_URI=${MONGODB_URI_ORDERS}
+    depends_on:
+      - nats
+      - mongodb
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    environment:
+      - NATS_URL=${NATS_URL}
+      - MONGODB_URI=${MONGODB_URI_AUTH}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN}
+    depends_on:
+      - nats
+      - mongodb
+    restart: unless-stopped
+
+  menu-service:
+    build:
+      context: ./menu-service
+      dockerfile: Dockerfile
+    environment:
+      - NATS_URL=${NATS_URL}
+      - MONGODB_URI=${MONGODB_URI_MENU}
+    depends_on:
+      - nats
+      - mongodb
+    restart: unless-stopped
 
 volumes:
   mongo_data:

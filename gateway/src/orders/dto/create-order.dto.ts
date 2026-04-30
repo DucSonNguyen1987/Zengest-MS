@@ -9,8 +9,9 @@ import { Type } from 'class-transformer';
 import { OrderItemDto, PricingDto } from './order-item.dto';
 
 export class CreateOrderDto {
+  @IsOptional()
   @IsString()
-  customerId: string;
+  customerId?: string;
 
   @IsOptional()
   @IsString()
