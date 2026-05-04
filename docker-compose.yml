@@ -70,5 +70,17 @@ services:
       - mongodb
     restart: unless-stopped
 
+  reservation-service:
+    build:
+      context: ./reservation-service
+      dockerfile: Dockerfile
+    environment:
+      - NATS_URL=${NATS_URL}
+      - MONGODB_URI=${MONGODB_URI_RESERVATIONS}
+    depends_on:
+      - nats
+      - mongodb
+    restart: unless-stopped
+
 volumes:
   mongo_data:

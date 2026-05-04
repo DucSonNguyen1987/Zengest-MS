@@ -8,6 +8,8 @@ export class NatsService {
     @Inject('ORDER_SERVICE') private readonly orderClient: ClientProxy,
     @Inject('AUTH_SERVICE') private readonly authClient: ClientProxy,
     @Inject('MENU_SERVICE') private readonly menuClient: ClientProxy,
+    @Inject('RESERVATION_SERVICE')
+    private readonly reservationClient: ClientProxy,
   ) {}
 
   /**
@@ -42,6 +44,7 @@ export class NatsService {
   private getClient(pattern: string): ClientProxy {
     if (pattern.startsWith('auth-')) return this.authClient;
     if (pattern.startsWith('menu-')) return this.menuClient;
+    if (pattern.startsWith('reservations.')) return this.reservationClient;
     return this.orderClient;
   }
 }

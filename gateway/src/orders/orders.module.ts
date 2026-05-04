@@ -31,6 +31,13 @@ import { NatsService } from './nats.service';
           servers: [process.env.NATS_URL || 'nats://localhost:4222'],
         },
       },
+      {
+        name: 'RESERVATION_SERVICE', //token d'injection
+        transport: Transport.NATS,
+        options: {
+          servers: [process.env.NATS_URL || 'nats://localhost:4222'],
+        },
+      },
     ]),
   ],
   controllers: [OrdersController], // Controleurs qui écoutent les sujets NATS
