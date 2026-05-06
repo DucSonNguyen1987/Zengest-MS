@@ -16,7 +16,10 @@ import {
   ReservationListResponse,
 } from './interfaces/reservation.interface';
 import { CreateReservationDto } from './dto/create-reservation.dto';
-import { UpdateReservationDto } from './dto/update-reservation.dto';
+import {
+  UpdateReservationDto,
+  UpdateStatusDto,
+} from './dto/update-reservation.dto';
 
 @Controller('reservations')
 export class ReservationsController {
@@ -84,9 +87,9 @@ export class ReservationsController {
    */
 
   @Get('customer/:customerId')
-  @Roles('Client', 'Staff-salle', 'Manager', 'Owner', 'Admin')
+  @Roles('Client', 'Staff_salle', 'Manager', 'Owner', 'Admin')
   async findByCustomer(
-    @Param('customerid') customerId: string,
+    @Param('customerId') customerId: string,
     @CurrentUser() user: JwtPayload,
   ): Promise<Reservation[]> {
     // Si le rôle est Client, on ignore le param et on force son propre id
@@ -118,12 +121,12 @@ export class ReservationsController {
     @Body() body: UpdateReservationDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<Reservation> {
-    return this.natsService.send<Reservation>('reservations;update', {
+    return this.natsService.send<Reservation>('reservations.update', {
       id,
       ...body,
       updatedBy: user.sub, // tracé automatiquement pour l'audit
       requesterId: user.sub,
-      resquesterRole: user.role,
+      requesterRole: user.role,
     });
   }
 
@@ -136,14 +139,14 @@ export class ReservationsController {
   @Roles('Client', 'Staff_salle', 'Manager', 'Owner', 'Admin')
   async updateStatus(
     @Param('id') id: string,
-    @Body() body: UpdateReservationDto,
+    @Body() body: UpdateStatusDto,
     @CurrentUser() user: JwtPayload,
   ): Promise<Reservation> {
     return this.natsService.send<Reservation>('reservations.updateStatus', {
       id,
       ...body,
       updatedBy: user.sub,
-      requesterid: user.sub,
+      requesterId: user.sub,
       requesterRole: user.role,
     });
   }
