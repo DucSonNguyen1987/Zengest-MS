@@ -1,98 +1,300 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Reservation Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Microservice de gestion des réservations de l'application **Zengest**.  
+Il fait partie de l'architecture microservices NestJS + NATS + MongoDB.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Rôle du service
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Le `reservation-service` gère le cycle de vie complet des réservations :
+- Création avec vérification de disponibilité (anti-doublon)
+- Consultation par client ou par identifiant
+- Modification des détails (date, nombre de couverts, notes)
+- Changement de statut avec contrôle des permissions par rôle
 
-## Project setup
+Il ne communique **jamais directement avec le client HTTP** — toutes les requêtes passent par la **Gateway** via NATS.
 
-```bash
-$ npm install
+---
+
+## Stack technique
+
+| Technologie | Usage |
+|---|---|
+| NestJS | Framework microservice |
+| NATS | Message broker (transport) |
+| MongoDB | Base de données |
+| Mongoose | ODM |
+| class-validator | Validation des DTOs |
+| Jest | Tests unitaires |
+
+---
+
+## Architecture
+
+```
+Client HTTP
+    │
+    ▼
+┌─────────────────┐
+│   API Gateway   │  HTTP · port 3000
+│  /reservations  │
+└────────┬────────┘
+         │ NATS (Request/Reply)
+         ▼
+┌──────────────────────┐
+│  reservation-service │  Microservice NATS (pas de port HTTP)
+│                      │
+│  @MessagePattern :   │
+│  reservations.create         │
+│  reservations.findAll        │
+│  reservations.findByCustomer │
+│  reservations.findById       │
+│  reservations.update         │
+│  reservations.updateStatus   │
+└──────────┬───────────┘
+           │
+     reservations-db
+       (MongoDB)
 ```
 
-## Compile and run the project
+---
 
-```bash
-# development
-$ npm run start
+## Structure du projet
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```
+reservation-service/
+├── src/
+│   ├── reservations/
+│   │   ├── dto/
+│   │   │   ├── create-reservation.dto.ts   ← validation à la création
+│   │   │   └── update-reservation.dto.ts   ← validation à la mise à jour
+│   │   ├── schemas/
+│   │   │   └── reservation.schema.ts       ← modèle Mongoose
+│   │   ├── reservations.controller.ts      ← @MessagePattern NATS
+│   │   ├── reservations.service.ts         ← logique métier + MongoDB
+│   │   ├── reservations.module.ts          ← module NestJS
+│   │   ├── reservations.controller.spec.ts ← tests unitaires controller
+│   │   └── reservations.service.spec.ts    ← tests unitaires service
+│   ├── app.module.ts                       ← ConfigModule + MongooseModule
+│   └── main.ts                             ← NestFactory.createMicroservice()
+├── .env
+└── Dockerfile
 ```
 
-## Run tests
+---
 
-```bash
-# unit tests
-$ npm run test
+## Modèle de données
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+```typescript
+Reservation {
+  _id        : ObjectId   // généré par MongoDB
+  customerId : string     // ID du client (injecté depuis le JWT par la Gateway)
+  ressourceId: string     // ID de la table/ressource (générique — pas tableId)
+  date       : Date       // date et heure de la réservation
+  numberOfGuests: number  // nombre de couverts (min 1)
+  status     : string     // statut courant (voir ci-dessous)
+  notes      : string?    // remarques optionnelles
+  createdBy  : string     // userId du créateur (injecté depuis le JWT)
+  updatedBy  : string?    // userId du dernier modificateur
+  createdAt  : Date       // auto (timestamps: true)
+  updatedAt  : Date       // auto (timestamps: true)
+}
 ```
 
-## Deployment
+### Statuts possibles
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| Statut | Description |
+|---|---|
+| `PENDING` | Réservation créée, en attente de confirmation |
+| `CONFIRMED` | Réservation confirmée par le staff |
+| `CANCELLED` | Réservation annulée |
+| `COMPLETED` | Réservation honorée |
+| `NO_SHOW` | Client ne s'est pas présenté |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+---
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+## Patterns NATS
+
+### `reservations.create`
+Crée une réservation après vérification de disponibilité.
+
+**Payload :**
+```json
+{
+  "customerId": "string",
+  "ressourceId": "string",
+  "date": "2026-06-15T19:30:00.000Z",
+  "numberOfGuests": 4,
+  "notes": "Anniversaire",
+  "createdBy": "string"
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+**Réponse :** document `Reservation` créé
 
-## Resources
+**Erreurs :**
+- `409 Conflict` — créneau déjà réservé pour cette ressource
 
-Check out a few resources that may come in handy when working with NestJS:
+---
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### `reservations.findAll`
+Retourne toutes les réservations (staff uniquement côté Gateway).
 
-## Support
+**Payload :**
+```json
+{ "limit": 20, "skip": 0 }
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**Réponse :**
+```json
+{
+  "reservations": [...],
+  "total": 42,
+  "limit": 20,
+  "skip": 0
+}
+```
 
-## Stay in touch
+---
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### `reservations.findByCustomer`
+Retourne les réservations d'un client.
 
-## License
+**Payload :**
+```json
+{ "customerId": "string" }
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+**Réponse :** tableau de `Reservation`
+
+---
+
+### `reservations.findById`
+Retourne une réservation par son `_id` MongoDB.
+
+**Payload :**
+```json
+{ "id": "string" }
+```
+
+**Erreurs :**
+- `404 Not Found` — réservation introuvable
+
+---
+
+### `reservations.update`
+Modifie les détails d'une réservation.
+
+**Payload :**
+```json
+{
+  "id": "string",
+  "date": "2026-06-20T20:00:00.000Z",
+  "numberOfGuests": 6,
+  "notes": "Table pour 6",
+  "updatedBy": "string",
+  "requesterId": "string",
+  "requesterRole": "string"
+}
+```
+
+**Règle métier :**
+- Un `Client` ne peut modifier que ses propres réservations → `403 Forbidden` sinon
+
+---
+
+### `reservations.updateStatus`
+Change le statut d'une réservation.
+
+**Payload :**
+```json
+{
+  "id": "string",
+  "status": "CONFIRMED",
+  "updatedBy": "string",
+  "requesterId": "string",
+  "requesterRole": "string"
+}
+```
+
+**Règles métier :**
+- Un `Client` ne peut qu'annuler (`CANCELLED`) → `403 Forbidden` pour tout autre statut
+- Un `Client` ne peut annuler que ses propres réservations → `403 Forbidden` sinon
+
+---
+
+## Variables d'environnement
+
+| Variable | Description | Valeur par défaut |
+|---|---|---|
+| `NATS_URL` | URL du broker NATS | `nats://localhost:4222` |
+| `MONGODB_URI` | URI de connexion MongoDB | `mongodb://localhost:27017/reservations-db` |
+
+---
+
+## Lancer le service
+
+### En local (développement)
+
+```bash
+# Installer les dépendances
+npm install
+
+# Démarrer en mode watch
+npm run start:dev
+```
+
+> NATS et MongoDB doivent être disponibles aux URLs définies dans `.env`
+
+### Via Docker Compose
+
+```bash
+# Depuis le dossier Backend/
+docker-compose up --build reservation-service
+```
+
+---
+
+## Tests
+
+```bash
+# Lancer tous les tests unitaires
+npm run test
+
+# Avec couverture de code
+npm run test:cov
+```
+
+### Couverture
+
+| Fichier | Tests |
+|---|---|
+| `reservations.controller.spec.ts` | 15 tests |
+| `reservations.service.spec.ts` | 20 tests |
+
+---
+
+## Contrôle des accès (côté Gateway)
+
+| Route | Méthode | Rôles autorisés |
+|---|---|---|
+| `/reservations` | POST | Client, Staff_salle, Manager, Owner, Admin |
+| `/reservations` | GET | Staff_salle, Manager, Owner, Admin |
+| `/reservations/my` | GET | Client, Staff_salle, Manager, Owner, Admin |
+| `/reservations/customer/:id` | GET | Client, Staff_salle, Manager, Owner, Admin |
+| `/reservations/:id` | GET | Client, Staff_salle, Manager, Owner, Admin |
+| `/reservations/:id` | PATCH | Client, Staff_salle, Manager, Owner, Admin |
+| `/reservations/:id/status` | PATCH | Client, Staff_salle, Manager, Owner, Admin |
+
+> Note : les clients sont limités à leurs propres réservations par le service (vérification `customerId === requesterId`).
+
+---
+
+## Décisions d'architecture notables
+
+**`ressourceId` plutôt que `tableId`** — le champ est intentionnellement générique pour permettre la réutilisation du service dans d'autres contextes (salles de réunion, créneaux, etc.).
+
+**`PAID` et `DELIVERED` absents** — ces statuts appartiennent au domaine des commandes (`order-service`), pas des réservations.
+
+**`requesterId` et `requesterRole` dans le payload NATS** — injectés par la Gateway depuis le JWT, ils permettent au service de vérifier les permissions sans avoir accès au token directement.
